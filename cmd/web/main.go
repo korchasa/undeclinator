@@ -23,63 +23,83 @@ var declinations *pkg.Declinations
 
 // Model of our test.
 type Model struct {
+	Q                 *Question
+	Chosen            string
+	QuestionsAnswered int
+	CorrectAnswered   int
+}
+
+func NewModel() *Model {
+	m := &Model{}
+	fmt.Printf("!!! Generate new model: %v\n", m)
+	return m
+}
+
+type Question struct {
 	SentencePrefix string
 	SentenceSuffix string
 	Variants       []string
 	Correct        string
-	Chosen         string
 }
 
-// NewModel Helper function to get the model from the socket data.
-func NewModel(s live.Socket) *Model {
-	fmt.Printf("state: %#v\n", s.Assigns())
-	m, ok := s.Assigns().(*Model)
-	// If we haven't already initialised set up.
-	if !ok {
-		m = initModel()
-	}
-	return m
-}
-
-func initModel() *Model {
+func NewQuestion() *Question {
 	q := questions[rand.Intn(len(questions))]
 	parts := strings.Split(q.Sentence, q.Word)
-	m := &Model{
+	m := &Question{
 		SentencePrefix: strings.Trim(parts[0], " "),
 		SentenceSuffix: strings.Trim(parts[1], " "),
 		Variants:       declinations.GetVariants(q.Word),
 		Correct:        q.Word,
 	}
-	fmt.Printf("!!! Generate new model: %v\n", m)
+	fmt.Printf("!!! Generate new question: %v\n", m)
+	return m
+}
+
+// SetupModel Helper function to get the model from the socket data.
+func SetupModel(s live.Socket) *Model {
+	m, ok := s.Assigns().(*Model)
+	if !ok {
+		m = NewModel()
+	}
 	return m
 }
 
 // mount initialises the thermostat state. Data returned to the mount function will
 // automatically be assigned to the socket.
 func mount(_ context.Context, s live.Socket) (interface{}, error) {
-	fmt.Printf("mount\n")
-	//debug.PrintStack()
-	return NewModel(s), nil
+	return SetupModel(s), nil
 }
 
-// selectVariant on the temp down event, decrease the thermostat temperature by .1 C.
-func selectVariant(_ context.Context, s live.Socket, p live.Params) (interface{}, error) {
-	model := NewModel(s)
+func handleStart(_ context.Context, s live.Socket, _ live.Params) (interface{}, error) {
+	model := SetupModel(s)
+	model.CorrectAnswered = 0
+	model.QuestionsAnswered = 0
+	model.Q = NewQuestion()
+	fmt.Printf("handleStart return: %#v\n", model)
+	return model, nil
+}
+
+func handleSelectVariant(_ context.Context, s live.Socket, p live.Params) (interface{}, error) {
+	model := SetupModel(s)
 	log.Printf("New state: %#v", model)
 	chosen := p["chosen"].(string)
 	log.Printf("params: %#v", p["chosen"])
 	model.Chosen = chosen
+	model.QuestionsAnswered++
+	if model.Q.Correct == chosen {
+		model.CorrectAnswered++
+	}
 	return model, nil
 }
 
-// nextQuestion on the temp down event, decrease the thermostat temperature by .1 C.
-func nextQuestion(_ context.Context, _ live.Socket, _ live.Params) (interface{}, error) {
-	model := initModel()
+func handleNextQuestion(_ context.Context, s live.Socket, _ live.Params) (interface{}, error) {
+	model := SetupModel(s)
+	model.Q = NewQuestion()
+	model.Chosen = ""
+	fmt.Printf("handleNextQuestion return: %#v\n", model)
 	return model, nil
 }
 
-// Example shows a simple temperature control using the
-// "live-click" event.
 func main() {
 
 	rand.Seed(time.Now().UnixNano())
@@ -126,40 +146,55 @@ func main() {
 				</p>
 			</div>	
 		</section>
+		{{ if not .Assigns.Q }}
+			<section class="section">
+				<div class="container">
+					<button 
+						class="button is-rounded is-large" 
+						live-click="start">Let's start</button>
+				</div>
+			</section>
+		{{ else }}
+			<section class="section">
+				<div class="container">
+					<h2 class="title is-2">	
+						<span>{{.Assigns.Q.SentencePrefix}}&nbsp;</span>
+						{{ if eq .Assigns.Chosen "" }}	
+							<span>...</span>
+						{{ else }}
+	                        {{ if eq .Assigns.Chosen .Assigns.Q.Correct }}
+								<span class="has-text-success">{{.Assigns.Q.Correct}}</span>
+							{{ else }}
+								<span class="has-text-danger">{{.Assigns.Q.Correct}}</span>
+							{{ end }}	
+						{{ end }}
+						<span>&nbsp;{{.Assigns.Q.SentenceSuffix}}</span>
+					</h2>
+					<div class="buttons">
+						{{ if eq $.Assigns.Chosen "" }}	
+							{{ range .Assigns.Q.Variants }}
+								<button 
+									class="button is-info is-rounded is-medium" 
+									live-click="selectVariant"
+									live-value-chosen="{{.}}">{{.}}</button>	
+							{{ end }}		
+						{{ else }}
+							<button 
+								class="button is-rounded is-large" 
+								live-click="nextQuestion">далі &raquo;</button>	
+						{{ end }}	
+					</div>
+				</div>
+			</section>	
+		{{ end }}
 		<section class="section">
 			<div class="container">
-				<h2 class="title is-2">
-					<span>{{.Assigns.SentencePrefix}}&nbsp;</span>
-					{{ if eq .Assigns.Chosen "" }}	
-						<span>...</span>
-					{{ else }}
-                        {{ if eq .Assigns.Chosen .Assigns.Correct }}
-							<span class="has-text-success">{{.Assigns.Correct}}</span>
-						{{ else }}
-							<span class="has-text-danger">{{.Assigns.Correct}}</span>
-						{{ end }}	
-					{{ end }}
-					<span>&nbsp;{{.Assigns.SentenceSuffix}}</span>
-				</h2>
-				{{ if eq $.Assigns.Chosen "" }}
-				<div class="buttons">	
-					{{ range .Assigns.Variants }}
-						<button 
-								class="button is-info is-rounded is-medium" 
-								live-click="selectVariant"
-								live-value-chosen="{{.}}">{{.}}</button>	
-					{{ end }}	
-				</div>
-				{{ else }}
-				<div class="buttons">
-					<button class="button is-rounded is-large" live-click="nextQuestion">далі &raquo;</button>
-				</div>
-				{{ end }}
-			</div>	
+				<h3 class="is-size-2">Правильні відповіді: {{.Assigns.CorrectAnswered}}&nbsp;iз&nbsp;{{.Assigns.QuestionsAnswered}}</h3>
+			</div>
 		</section>
-		<section>
+		<!--<section class="section">
 			<pre>{{ toPrettyJson .Assigns }}</pre>
-		</section>
+		</section>-->	
 	</body>	
 	<script src="/live.js"></script>
 </html>
@@ -174,18 +209,23 @@ func main() {
 		return &buf, nil
 	})
 
-	h.HandleEvent("selectVariant", selectVariant)
-	h.HandleEvent("nextQuestion", nextQuestion)
+	h.HandleEvent("selectVariant", handleSelectVariant)
+	h.HandleEvent("nextQuestion", handleNextQuestion)
+	h.HandleEvent("start", handleStart)
+	h.HandleError(func(ctx context.Context, err error) {
+		log.Printf("Error: %v\n", err)
+	})
 
 	http.Handle("/", live.NewHttpHandler(live.NewCookieStore("session-name", []byte("weak-secret")), h))
 
 	// This serves the JS needed to make live work.
 	http.Handle("/live.js", live.Javascript{})
+	http.Handle("/auto.js.map", live.JavascriptMap{})
 
 	addr := "localhost:28081"
 	fmt.Println("http://" + addr)
 	err = http.ListenAndServe(addr, nil)
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatalf("error: %v", err)
 	}
 }
