@@ -51,8 +51,8 @@ github.com/shopspring/decimal
 # github.com/spf13/cast v1.3.1
 ## explicit
 github.com/spf13/cast
-# golang.org/x/crypto v0.0.0-20200414173820-0848c9571904
-## explicit; go 1.11
+# golang.org/x/crypto v0.1.0
+## explicit; go 1.17
 golang.org/x/crypto/bcrypt
 golang.org/x/crypto/blowfish
 golang.org/x/crypto/pbkdf2
