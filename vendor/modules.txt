@@ -57,7 +57,7 @@ golang.org/x/crypto/bcrypt
 golang.org/x/crypto/blowfish
 golang.org/x/crypto/pbkdf2
 golang.org/x/crypto/scrypt
-# golang.org/x/net v0.0.0-20220325170049-de3da57026de
+# golang.org/x/net v0.7.0
 ## explicit; go 1.17
 golang.org/x/net/html
 golang.org/x/net/html/atom
